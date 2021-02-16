@@ -1,6 +1,4 @@
-import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgb
-import matplotlib.patches as patches
 import cv2
 
 color_maps = ['grey', 'r', 'b', 'g', 'gold', 'm', 'c', 'orange', 'olive', 'purple', 'pink', 'k']

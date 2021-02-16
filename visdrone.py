@@ -1,9 +1,7 @@
-import os
 import torch
 import numpy as np
 
-from torch.utils.data import Dataset, DataLoader
-from pycocotools.coco import COCO
+from torch.utils.data import Dataset
 import cv2
 from visdrone_db import VisDroneDataBase
 

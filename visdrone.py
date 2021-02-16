@@ -8,131 +8,28 @@ import cv2
 from visdrone_db import VisDroneDataBase
 
 
-class COCODataset(Dataset):
-    def __init__(self, root_dir, set='train2017', transform=None):
-
-        self.root_dir = root_dir
-        self.set_name = set
-        self.transform = transform
-
-        self.coco = COCO(os.path.join(self.root_dir, 'annotations', 'instances_' + self.set_name + '.json'))
-        self.image_ids = self.coco.getImgIds()
-        self.load_classes()
-
-    def load_classes(self):
-
-        # load class names (name -> label)
-        categories = self.coco.loadCats(self.coco.getCatIds())
-        categories.sort(key=lambda x: x['id'])
-
-        self.classes = {}
-        for c in categories:
-            self.classes[c['name']] = len(self.classes)
-
-        # also load the reverse (label -> name)
-        self.labels = {}
-        for key, value in self.classes.items():
-            self.labels[value] = key
-
-    def __len__(self):
-        return len(self.image_ids)
-
-    def __getitem__(self, idx):
-
-        img = self.load_image(idx)
-        annot = self.load_annotations(idx)
-        sample = {'img': img, 'annot': annot}
-        if self.transform:
-            sample = self.transform(sample)
-        return sample
-
-    def load_image(self, image_index):
-        image_info = self.coco.loadImgs(self.image_ids[image_index])[0]
-        path = os.path.join(self.root_dir, self.set_name, image_info['file_name'])
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        return img.astype(np.float32) / 255.
-
-    def load_annotations(self, image_index):
-        # get ground truth annotations
-        annotations_ids = self.coco.getAnnIds(imgIds=self.image_ids[image_index], iscrowd=False)
-        annotations = np.zeros((0, 5))
-
-        # some images appear to miss annotations
-        if len(annotations_ids) == 0:
-            return annotations
-
-        # parse annotations
-        coco_annotations = self.coco.loadAnns(annotations_ids)
-        for idx, a in enumerate(coco_annotations):
-
-            # some annotations have basically no width / height, skip them
-            if a['bbox'][2] < 1 or a['bbox'][3] < 1:
-                continue
-
-            annotation = np.zeros((1, 5))
-            annotation[0, :4] = a['bbox']
-            annotation[0, 4] = a['category_id'] - 1
-            annotations = np.append(annotations, annotation, axis=0)
-
-        # transform from [x, y, w, h] to [x1, y1, x2, y2]
-        annotations[:, 2] = annotations[:, 0] + annotations[:, 2]
-        annotations[:, 3] = annotations[:, 1] + annotations[:, 3]
-
-        return annotations
-
-
-class VisDroneYoloV3Dataset(Dataset):
-    def __init__(self, path):
-        self.db = VisDroneDataBase(path)
-        # width = 2000
-        # height 1500
-        self.w = 2000
-        self.h = 1500
-
-    def __getitem__(self, index):
-        numpy_img, annotations = self.db[index]
-        # w h c -> c w h
-        numpy_img = numpy_img.transpose((2, 0, 1))
-        numpy_img = np.asarray(numpy_img, dtype=np.float32) / 255
-        [bbox, cls_label, _] = annotations
-        [x1, y1, x2, y2] = bbox
-        w = x2 - x1
-        h = y2 - y1
-        x1 /= 2000
-        y1 /= 1500
-        w /= 2000
-        h /= 1500
-        bbox = np.asarray([x1, y1, w, h], dtype=np.float32)
-        numpy_img = torch.from_numpy(numpy_img)
-        bbox = torch.from_numpy(bbox)
-        cls_label = torch.LongTensor(cls_label)
-        return numpy_img, (bbox, cls_label)
-
-    def __len__(self):
-        return len(self.db)
-
-
-
 class VisDroneDataset(Dataset):
-    def __init__(self, path):
+    def __init__(self, path, device='cpu'):
         self.db = VisDroneDataBase(path)
+        self.device= device
 
     def __getitem__(self, index):
         numpy_img, annotations = self.db[index]
         # w h c -> c w h
         numpy_img = numpy_img.transpose((2, 0, 1))
         numpy_img = np.asarray(numpy_img, dtype=np.float32) / 255
-        [bbox, cls_label, _] = annotations
+        [bbox, cls_label, info] = annotations
         bbox = np.asarray(bbox, dtype=np.float32)
         numpy_img = torch.from_numpy(numpy_img)
         bbox = torch.from_numpy(bbox)
         cls_label = torch.LongTensor(cls_label)
-        return numpy_img, (bbox, cls_label)
+        target = {"boxes":bbox.to(self.device), "labels":cls_label.to(self.device),
+                  "scores": torch.Tensor(info[0]).to(self.device)}
+        return numpy_img.to(self.device), target
 
     def __len__(self):
         return len(self.db)
+
 
 def collater(data):
     imgs = [s['img'] for s in data]
@@ -159,7 +56,9 @@ def collater(data):
 
 
 class Resizer(object):
-    """Convert ndarrays in sample to Tensors."""
+    """
+    Convert ndarrays in sample to Tensors.
+    """
 
     def __init__(self, img_size=512):
         self.img_size = img_size
@@ -211,7 +110,7 @@ class Augmenter(object):
 
 class Normalizer(object):
 
-    def __init__(self, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+    def __init__(self, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
         self.mean = np.array([[mean]])
         self.std = np.array([[std]])
 

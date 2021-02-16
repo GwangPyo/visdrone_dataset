@@ -15,10 +15,18 @@ for i, c in enumerate(color_maps):
 def draw(image, annotation):
     im_show = image.copy()
     # Display the image
-    bbox, label, _ = annotation
-    # Create a Rectangle patch
+    if type(annotation) is list:
+        bbox, label, _ = annotation
+        # Create a Rectangle patch
+    elif type(annotation) is dict:
+        bbox = annotation["boxes"]
+        label = annotation["labels"]
+    else:
+        raise TypeError("annotation type must be list or dict")
     for bbox, class_label in zip(bbox, label):
         # bbox := [x1, y1, x2, y2]
         [x1, y1, x2, y2] = bbox
         cv2.rectangle(im_show, (x1, y1), (x2, y2), thickness=1, color=color_maps[class_label])
+    cv2.imshow("image", im_show)
+    cv2.waitKey(0)
     return im_show

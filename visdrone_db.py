@@ -57,8 +57,14 @@ class VisDroneDataBase(object):
             # remove new line characters
             line = line.replace("\n", "")
             # parse and append
-            bbox, label, info = VisDroneDataBase.parse_annotation_line(line)
-
+            try:
+                bbox, label, info = VisDroneDataBase.parse_annotation_line(line)
+            except ValueError:
+                # no label case
+                continue
+            # negative label case
+            if label < 0:
+                continue
             if ignore_0 and label == 0:
                 continue
             else:

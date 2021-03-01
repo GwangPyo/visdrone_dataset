@@ -28,8 +28,8 @@ ClassMap = {0: "ignored region", 1: "pedestrian", 2: "people",
 class VisDroneDataBase(object):
     def __init__(self, path, ignore_0=True):
         self.path = path
-        self.image_path = self.path + "/image/"
-        self.annotation_path = self.path + "/annotation/"
+        self.image_path = self.path + "/images/"
+        self.annotation_path = self.path + "/annotations/"
         self.prefix = os.listdir(self.image_path)
         for i, s in enumerate(self.prefix):
             self.prefix[i] = s.replace(".jpg", ".{}")
@@ -85,4 +85,31 @@ class VisDroneDataBase(object):
 
         infos = [float(score), float(truncation), float(occlusion)]
         return bbox, int(category), infos
+
+
+def build_annotation_json(data_path, file_path):
+    def _build_annotation_json():
+        db = VisDroneDataBase(data_path)
+        json_contents = []
+        print(len(db))
+        for i in range(len(db)):
+            data_segment = {}
+            filename = db.prefix[i]
+            data_segment['filename'] = filename.format(".jpg")
+            im_info, [bbox, label, _] = db[i]
+            width, height, channel = im_info.shape
+            data_segment['width'] = width
+            data_segment['height'] = height
+            annotation_dict= {}
+            annotation_dict["bboxes"] = np.asarray(bbox)
+            annotation_dict["labels"] = np.asarray(label)
+            data_segment["ann"] = annotation_dict
+            json_contents.append(data_segment)
+        return json_contents
+    json_dict = _build_annotation_json()
+    print(len(json_dict))
+    from to_mmcv_json import json_handler
+    handler = json_handler.JsonHandler()
+    handler.dump_to_path(obj=json_dict, filepath=file_path)
+    return
 
